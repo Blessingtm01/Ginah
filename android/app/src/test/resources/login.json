@@ -1,0 +1,26 @@
+{
+ "access_token": "test-access-token",
+ "refresh_token": "test-refresh-token",
+ "token_type": "bearer",
+ "expires_in": 900,
+ "user": {
+  "id": 7,
+  "council_id": 1,
+  "council_name": "Murewa RDC \u00e2\u20ac\u201c DEMONSTRATION DATA",
+  "council_code": "DEMO",
+  "council_is_demo": true,
+  "username": "reporter",
+  "full_name": "Demo Community Reporter",
+  "phone": "+263770000007",
+  "roles": [
+   "COMMUNITY_REPORTER"
+  ],
+  "permissions": [
+   "attachments.upload",
+   "incidents.create",
+   "incidents.view_own",
+   "notifications.view"
+  ],
+  "must_change_password": false
+ }
+}

@@ -1,0 +1,33 @@
+# Render Blueprint: creates the AcciSafe RDC API and its PostgreSQL database.
+# In Render: New > Blueprint > connect this GitHub repository.
+services:
+  - type: web
+    name: accisafe-rdc-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ACCISAFE_ENV
+        value: production
+      - key: ACCISAFE_SECRET_KEY
+        generateValue: true
+      - key: ACCISAFE_DATABASE_URL
+        fromDatabase:
+          name: accisafe-rdc-db
+          property: connectionString
+      # Creates the clearly-labelled DEMO council on first start. Set to "false" for a real council.
+      - key: ACCISAFE_SEED_DEMO
+        value: "true"
+      # "log" records SMS as SIMULATED. Change to "http" only with a real gateway configured.
+      - key: ACCISAFE_SMS_PROVIDER
+        value: log
+
+databases:
+  - name: accisafe-rdc-db
+    plan: free
+    databaseName: accisafe_rdc

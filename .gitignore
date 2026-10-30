@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+backend/data/
+.env
+.pytest_cache/
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
