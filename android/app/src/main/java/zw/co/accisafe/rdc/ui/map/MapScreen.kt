@@ -37,7 +37,9 @@ import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -60,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -83,7 +86,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import org.osmdroid.tileprovider.MapTileProviderBasic
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.overlay.TilesOverlay
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -112,10 +119,23 @@ import javax.inject.Inject
 
 data class MapFilter(val days: Int = 30, val activeOnly: Boolean = false)
 
+/** Esri ArcGIS Online tiles use z/y/x order. */
+private class EsriTiles(name: String, service: String, ext: String) :
+    OnlineTileSourceBase(name, 0, 19, 256, ext, arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/$service/MapServer/tile/"),
+        "Imagery © Esri, Maxar, Earthstar Geographics") {
+    override fun getTileURLString(index: Long) =
+        "$baseUrl${MapTileIndex.getZoom(index)}/${MapTileIndex.getY(index)}/${MapTileIndex.getX(index)}"
+}
+
+private val SatelliteTiles = EsriTiles("EsriWorldImagery", "World_Imagery", ".jpg")
+private val RoadLabels = EsriTiles("EsriTransportation", "Reference/World_Transportation", ".png")
+private val PlaceLabels = EsriTiles("EsriPlaces", "Reference/World_Boundaries_and_Places", ".png")
+
 @HiltViewModel
 class MapViewModel @Inject constructor(client: ApiClient, private val session: SessionStore) : RemoteViewModel<LiveMapResponse>(client) {
     val filter = MutableStateFlow(MapFilter())
     val hiddenTypes = MutableStateFlow<Set<String>>(emptySet())
+    val satellite = MutableStateFlow(true)
     val serverUrl get() = session.serverUrl
     val okHttp by lazy { client.okHttp }
 
@@ -136,6 +156,7 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
     val state by vm.state.collectAsState()
     val f by vm.filter.collectAsState()
     val hidden by vm.hiddenTypes.collectAsState()
+    val satellite by vm.satellite.collectAsState()
     val context = LocalContext.current
     val data = state.data
     var map by remember { mutableStateOf<MapView?>(null) }
@@ -149,15 +170,36 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
         while (true) { vm.reload(); delay(REFRESH_MS) }
     }
 
+    // Satellite photos with road and place labels on top, or the street map.
+    val labelOverlays = remember(map) {
+        map?.let { mv -> listOf(RoadLabels, PlaceLabels).map { src ->
+            TilesOverlay(MapTileProviderBasic(mv.context, src), mv.context).apply {
+                loadingBackgroundColor = android.graphics.Color.TRANSPARENT
+                loadingLineColor = android.graphics.Color.TRANSPARENT
+            }
+        } }.orEmpty()
+    }
+    LaunchedEffect(map, satellite) {
+        val mv = map ?: return@LaunchedEffect
+        mv.overlays.removeAll(labelOverlays.toSet())
+        if (satellite) {
+            mv.setTileSource(SatelliteTiles)
+            labelOverlays.reversed().forEach { mv.overlays.add(0, it) }
+        } else {
+            mv.setTileSource(TileSourceFactory.MAPNIK)
+        }
+        mv.invalidate()
+    }
+
     // Redraw overlays whenever the data or the hidden types change.
-    LaunchedEffect(map, data, hidden) {
+    LaunchedEffect(map, data, hidden, satellite) {
         val mv = map ?: return@LaunchedEffect
         val d = data ?: return@LaunchedEffect
         mv.overlays.removeAll { it is Marker || it is Polygon }
         boundaryPolygons(d.council.boundary).forEach { ring ->
-            mv.overlays.add(0, Polygon(mv).apply {
+            mv.overlays.add(labelOverlays.count { it in mv.overlays }, Polygon(mv).apply {
                 points = ring
-                outlinePaint.color = android.graphics.Color.parseColor("#14532D")
+                outlinePaint.color = android.graphics.Color.parseColor(if (satellite) "#7CFFA8" else "#14532D")
                 outlinePaint.strokeWidth = 6f
                 outlinePaint.pathEffect = DashPathEffect(floatArrayOf(24f, 14f), 0f)
                 fillPaint.color = android.graphics.Color.argb(22, 46, 158, 91)
@@ -207,18 +249,20 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(satellite, { vm.satellite.value = !satellite }, { Text(if (satellite) "Satellite" else "Map") },
+                    leadingIcon = { Icon(if (satellite) Icons.Default.Satellite else Icons.Default.Map, null) })
                 listOf(1 to "24 hours", 7 to "7 days", 30 to "30 days", 90 to "90 days").forEach { (days, label) ->
                     FilterChip(f.days == days, { vm.apply(f.copy(days = days)) }, { Text(label) })
                 }
                 FilterChip(f.activeOnly, { vm.apply(f.copy(activeOnly = !f.activeOnly)) }, { Text("Open only") })
             }
             state.error?.let { Box(Modifier.padding(horizontal = 12.dp)) { ErrorBanner(it) { vm.reload() } } }
-            Box(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).clipToBounds()) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         MapView(ctx).apply {
-                            setTileSource(TileSourceFactory.MAPNIK)
+                            setTileSource(SatelliteTiles)
                             setMultiTouchControls(true)
                             controller.setZoom(10.0)
                             controller.setCenter(GeoPoint(-17.80, 31.84))
@@ -233,8 +277,9 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
                     Legend(d, hidden, legendOpen, { legendOpen = !legendOpen }, vm::toggle,
                         Modifier.align(Alignment.TopStart).padding(10.dp))
                 }
-                Text("© OpenStreetMap contributors", style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.align(Alignment.BottomStart).background(Color.White.copy(alpha = .8f)).padding(horizontal = 6.dp, vertical = 2.dp))
+                Text(if (satellite) "Imagery © Esri, Maxar, Earthstar Geographics" else "© OpenStreetMap contributors", style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).background(Color.Black.copy(alpha = .55f)).padding(horizontal = 6.dp, vertical = 2.dp))
             }
         }
     }

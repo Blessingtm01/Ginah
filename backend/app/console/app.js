@@ -112,9 +112,23 @@ function show(v) {
 
 // --- live map -------------------------------------------------------------------------------------
 const map = L.map("map", { zoomControl: true, preferCanvas: false }).setView([-17.80, 31.84], 10);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+// Base maps: real satellite photos (default) with road and place labels, or the street map.
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const satellite = L.layerGroup([
+  L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, {
+    maxZoom: 19, maxNativeZoom: 18, attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+  }),
+  L.tileLayer(`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
+  L.tileLayer(`${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 18 }),
+]);
+const streets = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19, attribution: "Map © OpenStreetMap contributors. Rural roads may be incomplete.",
-}).addTo(map);
+});
+let baseName = "Satellite";
+try { baseName = localStorage.getItem("accisafe.basemap") || "Satellite"; } catch { /* storage blocked */ }
+(baseName === "Map" ? streets : satellite).addTo(map);
+L.control.layers({ Satellite: satellite, Map: streets }, null, { position: "bottomright", collapsed: false }).addTo(map);
+map.on("baselayerchange", (e) => { try { localStorage.setItem("accisafe.basemap", e.name); } catch { /* storage blocked */ } });
 const markers = L.layerGroup().addTo(map);
 let boundaryLayer = null;
 let live = null;            // last /map/live response
@@ -144,7 +158,7 @@ async function loadMap() {
 function drawBoundary(council) {
   if (boundaryLayer || !council.boundary) return;
   boundaryLayer = L.geoJSON(council.boundary, {
-    style: { color: "#14532D", weight: 3, fillColor: "#2E9E5B", fillOpacity: 0.06, dashArray: "6 4" },
+    style: { color: "#7CFFA8", weight: 3, fillColor: "#2E9E5B", fillOpacity: 0.04, dashArray: "8 5" },
     interactive: false,
   }).addTo(map);
   if (!fitted) map.fitBounds(boundaryLayer.getBounds(), { padding: [20, 20] });
