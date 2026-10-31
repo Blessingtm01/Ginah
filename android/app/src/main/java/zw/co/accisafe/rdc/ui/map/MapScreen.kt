@@ -38,6 +38,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material3.Button
@@ -96,8 +104,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import zw.co.accisafe.rdc.data.SessionStore
 import zw.co.accisafe.rdc.data.net.ApiClient
 import zw.co.accisafe.rdc.data.net.LiveMapResponse
@@ -136,6 +142,7 @@ class MapViewModel @Inject constructor(client: ApiClient, private val session: S
     val filter = MutableStateFlow(MapFilter())
     val hiddenTypes = MutableStateFlow<Set<String>>(emptySet())
     val satellite = MutableStateFlow(true)
+    val voice = MutableStateFlow(true)
     val serverUrl get() = session.serverUrl
     val okHttp by lazy { client.okHttp }
 
@@ -164,6 +171,38 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
     var selected by remember { mutableStateOf<MapIncident?>(null) }
     var legendOpen by remember { mutableStateOf(false) }
     val loader = remember { ImageLoader.Builder(context).okHttpClient(vm.okHttp).build() }
+
+    // Where am I: live GPS position, follow mode and warnings about incidents ahead.
+    var hasLocation by remember { mutableStateOf(granted(context)) }
+    val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { hasLocation = granted(context) }
+    LaunchedEffect(Unit) { if (!hasLocation) askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
+    val voice by vm.voice.collectAsState()
+    val alerts = remember { ProximityAlerts(context) }
+    DisposableEffect(Unit) { onDispose { alerts.shutdown() } }
+    LaunchedEffect(voice) { alerts.voice = voice }
+    var myFix by remember { mutableStateOf<android.location.Location?>(null) }
+    var following by remember { mutableStateOf(false) }
+    var nearby by remember { mutableStateOf<Nearby?>(null) }
+    var tracker by remember { mutableStateOf<TrackingOverlay?>(null) }
+    LaunchedEffect(map, hasLocation) {
+        val mv = map ?: return@LaunchedEffect
+        if (!hasLocation || tracker != null) return@LaunchedEffect
+        tracker = TrackingOverlay(context, mv) { fix ->
+            myFix = fix
+            following = tracker?.isFollowLocationEnabled == true   // panning the map stops following
+            nearby = vm.state.value.data?.let { alerts.check(fix, it.incidents) }
+        }.also { it.enableMyLocation(); mv.overlays.add(it) }
+    }
+    fun setFollow(on: Boolean) {
+        val t = tracker ?: return
+        val mv = map ?: return
+        if (on) {
+            t.enableFollowLocation()
+            t.myLocation?.let { mv.controller.animateTo(it, 17.0, 800L) } ?: mv.controller.setZoom(17.0)
+        } else t.disableFollowLocation()
+        following = on
+        mv.keepScreenOn = on   // keep the screen on while tracking a journey
+    }
 
     // Keep the map live while the screen is open.
     LaunchedEffect(Unit) {
@@ -195,7 +234,7 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
     LaunchedEffect(map, data, hidden, satellite) {
         val mv = map ?: return@LaunchedEffect
         val d = data ?: return@LaunchedEffect
-        mv.overlays.removeAll { it is Marker || it is Polygon }
+        mv.overlays.removeAll { it is Marker || it is Polygon }   // keeps tiles, labels and the you-are-here overlay
         boundaryPolygons(d.council.boundary).forEach { ring ->
             mv.overlays.add(labelOverlays.count { it in mv.overlays }, Polygon(mv).apply {
                 points = ring
@@ -217,6 +256,7 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
                 setOnMarkerClickListener { _, _ -> selected = inc; true }
             })
         }
+        tracker?.let { mv.overlays.remove(it); mv.overlays.add(it) }   // keep "you are here" above the incident dots
         if (!fitted) {
             val ring = boundaryPolygons(d.council.boundary).flatten()
             if (ring.isNotEmpty()) {
@@ -255,6 +295,8 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
                     FilterChip(f.days == days, { vm.apply(f.copy(days = days)) }, { Text(label) })
                 }
                 FilterChip(f.activeOnly, { vm.apply(f.copy(activeOnly = !f.activeOnly)) }, { Text("Open only") })
+                FilterChip(voice, { vm.voice.value = !voice }, { Text(if (voice) "Voice alerts on" else "Voice alerts off") },
+                    leadingIcon = { Icon(if (voice) Icons.Default.VolumeUp else Icons.Default.VolumeOff, null) })
             }
             state.error?.let { Box(Modifier.padding(horizontal = 12.dp)) { ErrorBanner(it) { vm.reload() } } }
             Box(Modifier.weight(1f).clipToBounds()) {
@@ -266,9 +308,6 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
                             setMultiTouchControls(true)
                             controller.setZoom(10.0)
                             controller.setCenter(GeoPoint(-17.80, 31.84))
-                            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                                overlays.add(MyLocationNewOverlay(GpsMyLocationProvider(ctx), this).apply { enableMyLocation() })
-                            }
                             map = this
                         }
                     },
@@ -276,6 +315,30 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
                 data?.let { d ->
                     Legend(d, hidden, legendOpen, { legendOpen = !legendOpen }, vm::toggle,
                         Modifier.align(Alignment.TopStart).padding(10.dp))
+                }
+                nearby?.let { n ->
+                    Surface(onClick = { selected = n.inc }, shape = RoundedCornerShape(16.dp), color = Color(0xEE1B1B1B), shadowElevation = 8.dp,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 12.dp, end = 12.dp).fillMaxWidth()) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(18.dp).clip(CircleShape).background(parse(n.inc.color)))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("${spokenType(n.inc).replaceFirstChar { it.uppercase() }} · ${distanceText(n.metres)} ${if (n.ahead) "ahead" else "from you"}",
+                                    color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Text("${n.inc.category} · ${n.inc.status.replace('_', ' ').lowercase()} · tap for details and photos",
+                                    color = Color.White.copy(alpha = .8f), style = MaterialTheme.typography.bodySmall)
+                            }
+                            Icon(Icons.Default.Warning, null, tint = Color(0xFFFFC107))
+                        }
+                    }
+                }
+                if (hasLocation) {
+                    SmallFloatingActionButton(
+                        onClick = { setFollow(!following) },
+                        containerColor = if (following) Color(0xFF1A73E8) else MaterialTheme.colorScheme.surface,
+                        contentColor = if (following) Color.White else Color(0xFF1A73E8),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 96.dp).size(52.dp),
+                    ) { Icon(if (following) Icons.Default.Navigation else Icons.Default.MyLocation, if (following) "Stop following me" else "Follow my location") }
                 }
                 Text(if (satellite) "Imagery © Esri, Maxar, Earthstar Geographics" else "© OpenStreetMap contributors", style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
@@ -286,7 +349,10 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
 
     selected?.let { inc ->
         ModalBottomSheet(onDismissRequest = { selected = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            IncidentSheet(inc, data?.legend?.firstOrNull { it.code == inc.type }?.label, "${vm.serverUrl}api/v1/map/photos/", loader,
+            val away = myFix?.let { fix ->
+                FloatArray(1).also { android.location.Location.distanceBetween(fix.latitude, fix.longitude, inc.latitude, inc.longitude, it) }[0].toInt()
+            }
+            IncidentSheet(inc, data?.legend?.firstOrNull { it.code == inc.type }?.label, "${vm.serverUrl}api/v1/map/photos/", loader, away,
                 canOpen = inc.mine || me.can("incidents.view_all") || me.can("incidents.view_assigned"),
                 onOpen = { selected = null; nav.navigate(Routes.incident(inc.id)) })
         }
@@ -332,7 +398,7 @@ private fun Legend(d: LiveMapResponse, hidden: Set<String>, open: Boolean, onTog
 }
 
 @Composable
-private fun IncidentSheet(inc: MapIncident, typeLabel: String?, photoBase: String, loader: ImageLoader, canOpen: Boolean, onOpen: () -> Unit) {
+private fun IncidentSheet(inc: MapIncident, typeLabel: String?, photoBase: String, loader: ImageLoader, away: Int?, canOpen: Boolean, onOpen: () -> Unit) {
     var viewer by remember { mutableStateOf<Int?>(null) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(parse(inc.color), Forest))).padding(18.dp)) {
@@ -366,6 +432,7 @@ private fun IncidentSheet(inc: MapIncident, typeLabel: String?, photoBase: Strin
             InfoRow("Deaths reported", tri(inc.fatalities))
             InfoRow("Injuries", tri(inc.injuries))
             inc.affectedPeople?.let { InfoRow("People affected", it.toString()) }
+            away?.let { InfoRow("Distance from you", distanceText(it)) }
             InfoRow("Where", listOfNotNull(inc.ward, inc.landmark).joinToString(" · ").ifBlank { "GPS position" })
             InfoRow("Reported", formatTime(inc.reportedAt))
             InfoRow("Last update", formatTime(inc.updatedAt))
@@ -397,6 +464,10 @@ private fun PhotoViewer(urls: List<String>, start: Int, loader: ImageLoader, onC
 }
 
 // --- helpers ---------------------------------------------------------------------------------
+
+private fun granted(context: android.content.Context) =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 private fun parse(hex: String) = Color(android.graphics.Color.parseColor(hex))
 
