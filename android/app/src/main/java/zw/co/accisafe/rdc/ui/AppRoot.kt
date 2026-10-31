@@ -90,10 +90,14 @@ object Routes {
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
+/** Community reporters land on the live council map; staff land on their dashboard. */
+private fun startFor(me: Me) = if (me.isCommunityOnly) Routes.MAP else Routes.HOME
+
 private fun tabsFor(me: Me): List<Tab> = buildList {
+    if (me.isCommunityOnly) add(Tab(Routes.MAP, "Live map", Icons.Default.Map))
     add(Tab(Routes.HOME, "Home", Icons.Default.Dashboard))
     add(Tab(Routes.INCIDENTS, if (me.isCommunityOnly) "My reports" else "Incidents", Icons.Default.ListAlt))
-    if (me.can("incidents.view_all")) add(Tab(Routes.MAP, "Map", Icons.Default.Map))
+    if (!me.isCommunityOnly) add(Tab(Routes.MAP, "Map", Icons.Default.Map))
     add(Tab(Routes.NOTIFICATIONS, "Alerts", Icons.Default.Notifications))
     add(Tab(Routes.MORE, "More", Icons.Default.Menu))
 }
@@ -131,10 +135,10 @@ fun AppRoot(session: SessionViewModel = hiltViewModel()) {
                 }
             },
         ) { padding ->
-            NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.fillMaxSize().padding(padding)) {
+            NavHost(nav, startDestination = startFor(current), modifier = Modifier.fillMaxSize().padding(padding)) {
                 composable(Routes.HOME) { HomeScreen(current, nav) }
                 composable(Routes.INCIDENTS) { IncidentListScreen(current, nav) }
-                composable(Routes.MAP) { MapScreen(nav) }
+                composable(Routes.MAP) { MapScreen(current, nav) }
                 composable(Routes.NOTIFICATIONS) { NotificationsScreen(nav) }
                 composable(Routes.MORE) { MoreScreen(current, nav, onLogout = { session.logout() }) }
                 composable(Routes.REPORT, arguments = listOf(navArgument("kind") { defaultValue = "EMERGENCY" })) {

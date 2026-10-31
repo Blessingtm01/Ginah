@@ -133,6 +133,7 @@ class Incident(Base):
     # Details. Tri-state answers: YES | NO | UNKNOWN; NULL means "not provided".
     description: Mapped[str] = mapped_column(Text)
     injuries: Mapped[str | None] = mapped_column(String(8))
+    fatalities: Mapped[str | None] = mapped_column(String(8))  # has anyone died?
     immediate_danger: Mapped[str | None] = mapped_column(String(8))
     threat_to_life: Mapped[str | None] = mapped_column(String(8))
     may_worsen: Mapped[str | None] = mapped_column(String(8))

@@ -54,6 +54,7 @@ interface ApiService {
     @POST("api/v1/incidents/{id}/escalate-to-emergency") suspend fun escalateToEmergency(@Path("id") id: Int, @Body body: EscalateRequest): IncidentSummary
     @POST("api/v1/incidents/{id}/resources") suspend fun allocate(@Path("id") id: Int, @Body body: AllocateRequest): IdResponse
     @POST("api/v1/allocations/{id}/return") suspend fun returnResource(@Path("id") id: Int): Response<Unit>
+    @GET("api/v1/map/live") suspend fun liveMap(@Query("days") days: Int = 30, @Query("active_only") activeOnly: Boolean = false): LiveMapResponse
     @Multipart @POST("api/v1/incidents/{id}/attachments")
     suspend fun uploadAttachment(@Path("id") id: Int, @Part file: MultipartBody.Part): IdResponse
 

@@ -58,6 +58,22 @@ demonstration data. Do not seed demo data on a production server.
 Command line build: `.\gradlew.bat assembleDebug testDebugUnitTest` →
 `android\app\build\outputs\apk\debug\app-debug.apk`. Install with `adb install -r <apk>`.
 
+## 2a. Council desktop console
+
+The server also hosts a browser console for council staff at `/console/`. On Render this is
+https://accisafe-rdc-api.onrender.com/console/. Sign in with the same council code, username and password
+as on the phone. In Chrome or Edge, **Install app** (or the install icon in the address bar) adds it to the
+Windows Start menu and desktop as its own window.
+
+- **Live map:** the council boundary and every report with a GPS position, coloured by the map key.
+  Click a dot to see the details and every photo taken at the scene. New reports pop up with a sound.
+- **Reports:** a searchable, filterable list of every report, with CSV export for roles that may export.
+- **Dashboard:** open, unacknowledged and critical counts, breakdowns by type, ward and status, and response times.
+- Coordinators can acknowledge reports, change their status, set priority and assign teams from the detail panel.
+
+Community reporters open the phone app on the same live map (`GET /api/v1/map/live`). It shows every
+report in the council area and its photos, but never the reporter's name or phone number.
+
 ## 3. Production configuration (summary)
 
 - Use PostgreSQL: `ACCISAFE_DATABASE_URL=postgresql+psycopg://…` (install `psycopg[binary]`), then `init-db`.

@@ -1,18 +1,20 @@
 """AcciSafe RDC backend application."""
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from .config import settings
 from .db import SessionLocal, engine
 from .escalation import EscalationWorker
-from .routers import admin, auth, incidents, operations, reports
+from .routers import admin, auth, incidents, livemap, operations, reports
 
 logging.basicConfig(level=logging.INFO, format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}')
 log = logging.getLogger("accisafe")
@@ -63,8 +65,16 @@ def create_app(start_worker: bool = True) -> FastAPI:
             conn.execute(text("SELECT 1"))
         return {"status": "ok", "environment": settings.environment, "sms_provider": settings.sms_provider}
 
-    for r in (auth.router, admin.router, incidents.router, operations.router, reports.router):
+    for r in (auth.router, admin.router, incidents.router, livemap.router, operations.router, reports.router):
         app.include_router(r, prefix="/api/v1")
+
+    # Council desktop console (browser app, installable on Windows/macOS from Chrome or Edge).
+    console_dir = os.path.join(os.path.dirname(__file__), "console")
+    app.mount("/console", StaticFiles(directory=console_dir, html=True), name="console")
+
+    @app.get("/", include_in_schema=False)
+    def root():
+        return RedirectResponse("/console/")
     return app
 
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Camera photos are written to app cache, then copied and compressed into the report queue. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

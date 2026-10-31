@@ -3,6 +3,8 @@ package zw.co.accisafe.rdc.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.net.Uri
 import androidx.room.Room
 import dagger.Module
@@ -159,9 +161,20 @@ class ReportRepository @Inject constructor(
             val bmp = context.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
             } ?: return@runCatching null
+            // Camera photos are often stored sideways with an EXIF rotation; apply it before re-encoding.
+            val degrees = context.contentResolver.openInputStream(uri)?.use {
+                when (ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } ?: 0f
+            val upright = if (degrees == 0f) bmp else
+                Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(degrees) }, true)
             val dir = File(context.filesDir, "report_photos").apply { mkdirs() }
             val file = File(dir, "${UUID.randomUUID()}.jpg")
-            FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            FileOutputStream(file).use { upright.compress(Bitmap.CompressFormat.JPEG, 82, it) }
             file.absolutePath
         }.getOrNull()
     }

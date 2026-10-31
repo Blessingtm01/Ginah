@@ -52,6 +52,17 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Lets the camera app save report photos into this app's cache. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.photos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/photo_paths" />
+        </provider>
+
         <!-- WorkManager is initialised by the app with the Hilt worker factory. -->
         <provider
             android:name="androidx.startup.InitializationProvider"

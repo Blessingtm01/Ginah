@@ -42,6 +42,7 @@ data class IncidentCreate(
     val wardId: Int? = null, val landmark: String? = null, val injuries: String? = null, val immediateDanger: String? = null,
     val threatToLife: String? = null, val mayWorsen: String? = null, val affectedPeople: Int? = null,
     val affectedPeopleUnknown: Boolean = false, val reporterName: String? = null, val reporterPhone: String? = null,
+    val fatalities: String? = null,
 )
 
 @Serializable
@@ -89,7 +90,7 @@ data class IncidentDetail(
     val description: String, val version: Int, val isDemo: Boolean = false,
     val occurredAt: String? = null, val occurredAtUnknown: Boolean = false, val acknowledgedAt: String? = null,
     val resolvedAt: String? = null, val closedAt: String? = null, val locationSource: String = "NONE",
-    val injuries: String? = null, val immediateDanger: String? = null, val threatToLife: String? = null,
+    val injuries: String? = null, val fatalities: String? = null, val immediateDanger: String? = null, val threatToLife: String? = null,
     val mayWorsen: String? = null, val affectedPeople: Int? = null, val affectedPeopleUnknown: Boolean = false,
     val escalatedFromRoutine: Boolean = false, val reporterName: String? = null, val reporterPhone: String? = null,
     val statusHistory: List<HistoryItem> = emptyList(), val attachments: List<AttachmentDto> = emptyList(),
@@ -194,3 +195,25 @@ data class AuditItem(
     val correlationId: String? = null, val createdAt: String,
 )
 @Serializable data class EscalationRunResponse(val created: Int)
+
+// --- live council map ---------------------------------------------------------------------------
+
+@Serializable data class LegendEntry(val code: String, val label: String, val color: String)
+@Serializable
+data class MapCouncil(
+    val name: String, val areaName: String? = null, val center: List<Double>? = null,
+    val boundary: JsonObject? = null, val boundarySource: String? = null,
+)
+@Serializable
+data class MapIncident(
+    val id: Int, val reference: String, val kind: String, val type: String, val color: String, val category: String,
+    val status: String, val active: Boolean, val priority: String? = null, val latitude: Double, val longitude: Double,
+    val ward: String? = null, val landmark: String? = null, val description: String, val injuries: String? = null,
+    val fatalities: String? = null, val affectedPeople: Int? = null, val reportedAt: String, val receivedAt: String,
+    val updatedAt: String, val photoIds: List<Int> = emptyList(), val mine: Boolean = false, val isDemo: Boolean = false,
+)
+@Serializable
+data class LiveMapResponse(
+    val council: MapCouncil, val legend: List<LegendEntry>, val days: Int, val generatedAt: String,
+    val incidents: List<MapIncident>,
+)

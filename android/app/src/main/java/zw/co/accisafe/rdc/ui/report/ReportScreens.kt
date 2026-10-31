@@ -4,6 +4,21 @@ import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.core.content.FileProvider
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import coil.compose.AsyncImage
+import java.io.File
+import java.util.UUID
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -143,6 +159,8 @@ class ReportViewModel @Inject constructor(
     val me get() = session.me.value
 }
 
+private const val MAX_PHOTOS = 5
+
 private val occurredOptions = listOf("Just now" to 0L, "About 15 min ago" to 15L, "About 1 hour ago" to 60L, "Earlier today" to 240L)
 
 @Composable
@@ -161,6 +179,7 @@ fun ReportIncidentScreen(me: Me, nav: NavHostController, kind: String, vm: Repor
     var landmark by rememberSaveable { mutableStateOf("") }
     var occurredIndex by rememberSaveable { mutableStateOf<Int?>(0) }
     var injuries by rememberSaveable { mutableStateOf<String?>(null) }
+    var fatalities by rememberSaveable { mutableStateOf<String?>(null) }
     var danger by rememberSaveable { mutableStateOf<String?>(null) }
     var threat by rememberSaveable { mutableStateOf<String?>(null) }
     var affected by rememberSaveable { mutableStateOf("") }
@@ -170,7 +189,21 @@ fun ReportIncidentScreen(me: Me, nav: NavHostController, kind: String, vm: Repor
     val photos = remember { mutableStateListOf<Uri>() }
 
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.locate() }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(3)) { photos.clear(); photos.addAll(it) }
+    val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PHOTOS)) {
+        photos.addAll(it.filter { u -> u !in photos }.take(MAX_PHOTOS - photos.size))
+    }
+    var pendingShot by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        pendingShot?.let { if (ok && photos.size < MAX_PHOTOS) photos.add(it) }
+        pendingShot = null
+    }
+    fun takePhoto() {
+        val dir = File(context.cacheDir, "camera").apply { mkdirs() }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.photos", File(dir, "${UUID.randomUUID()}.jpg"))
+        pendingShot = uri
+        camera.launch(uri)
+    }
     LaunchedEffect(Unit) {
         locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
     }
@@ -226,6 +259,7 @@ fun ReportIncidentScreen(me: Me, nav: NavHostController, kind: String, vm: Repor
 
             if (emergency) {
                 SectionCard("3. Danger and injuries (answer what you know)") {
+                    TriStateField("Has anyone died?", fatalities) { fatalities = it }
                     TriStateField("Is anyone injured?", injuries) { injuries = it }
                     TriStateField("Is anyone in immediate danger?", danger) { danger = it }
                     TriStateField("Is anyone's life threatened?", threat) { threat = it }
@@ -240,8 +274,30 @@ fun ReportIncidentScreen(me: Me, nav: NavHostController, kind: String, vm: Repor
             }
 
             SectionCard("${if (emergency) 4 else 3}. Photos and contact") {
-                OutlinedButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                    Icon(Icons.Default.AddAPhoto, null); Spacer(Modifier.width(8.dp)); Text(if (photos.isEmpty()) "Add photos (optional, up to 3)" else "${photos.size} photo(s) selected")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { takePhoto() }, enabled = photos.size < MAX_PHOTOS, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text("Take photo")
+                    }
+                    OutlinedButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        enabled = photos.size < MAX_PHOTOS, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.AddAPhoto, null); Spacer(Modifier.width(6.dp)); Text("From gallery")
+                    }
+                }
+                Text(if (photos.isEmpty()) "Optional, up to $MAX_PHOTOS photos. They appear on the council map when people tap this report."
+                     else "${photos.size} of $MAX_PHOTOS photos added", style = MaterialTheme.typography.bodyMedium)
+                if (photos.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(photos.toList()) { uri ->
+                            Box {
+                                AsyncImage(model = uri, contentDescription = "Selected photo", contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(96.dp).clip(RoundedCornerShape(12.dp)))
+                                IconButton(onClick = { photos.remove(uri) }, modifier = Modifier.align(Alignment.TopEnd).size(30.dp),
+                                    colors = IconButtonDefaults.iconButtonColors(containerColor = Color.Black.copy(alpha = .55f), contentColor = Color.White)) {
+                                    Icon(Icons.Default.Close, "Remove photo", Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
                 }
                 Text("Only take photos when it is safe to do so.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(name, { name = it }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -265,13 +321,13 @@ fun ReportIncidentScreen(me: Me, nav: NavHostController, kind: String, vm: Repor
                             latitude = fix?.latitude, longitude = fix?.longitude, accuracyM = fix?.accuracyM,
                             locationSource = if (fix != null) "GPS" else if (ward != null || landmark.isNotBlank()) "MANUAL" else "NONE",
                             wardId = ward?.id, landmark = landmark.trim().ifBlank { null },
-                            injuries = injuries, immediateDanger = danger, threatToLife = threat,
+                            injuries = injuries, fatalities = fatalities, immediateDanger = danger, threatToLife = threat,
                             affectedPeople = affected.toIntOrNull(), affectedPeopleUnknown = affectedUnknown,
                             reporterName = name.trim().ifBlank { null },
                             reporterPhone = phone.filter { it.isDigit() || it == '+' || it == ' ' }.trim().ifBlank { null },
                         )
                     }, cat.name, photos.toList()) { localId ->
-                        nav.navigate(Routes.reportDone(localId)) { popUpTo(Routes.HOME) }
+                        nav.navigate(Routes.reportDone(localId)) { popUpTo(nav.graph.findStartDestination().id) }
                     }
                 },
                 enabled = canSubmit,
@@ -331,7 +387,7 @@ fun ReportConfirmationScreen(localId: String, nav: NavHostController, vm: Pendin
             if (r.status == SubmissionStatus.WAITING || r.status == SubmissionStatus.FAILED) {
                 OutlinedButton(onClick = { vm.retry(r.localId) }, Modifier.fillMaxWidth()) { Text("Try sending now") }
             }
-            TextButton(onClick = { nav.popBackStack(Routes.HOME, inclusive = false) }, Modifier.fillMaxWidth()) { Text("Back to home") }
+            TextButton(onClick = { nav.popBackStack(nav.graph.findStartDestination().id, inclusive = false) }, Modifier.fillMaxWidth()) { Text("Done") }
         }
     }
 }

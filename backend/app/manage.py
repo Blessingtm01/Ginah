@@ -69,11 +69,67 @@ def create_user(db, council: m.Council, username: str, full_name: str, password:
     return u
 
 
+# (key, category, description, status, priority, suggested, ward index, minutes ago, lat, lon, injuries, fatalities)
+DEMO_SAMPLES = [
+    ("0001", "Road traffic accident", "Demo: two vehicles collided near the demo business centre.", "AWAITING_REVIEW", None, "HIGH", 0, 25, -17.67, 31.81, "UNKNOWN", None),
+    ("0002", "Bush or veld fire", "Demo: grass fire spreading towards homesteads.", "ASSIGNED", "CRITICAL", "HIGH", 1, 90, -17.69, 31.84, "UNKNOWN", None),
+    ("0003", "Fallen tree", "Demo: tree blocking the gravel road.", "RESOLVED", "MEDIUM", "MEDIUM", 2, 60 * 26, -17.71, 31.87, None, None),
+    ("0004", "Blocked drainage", "Demo: culvert blocked, water pooling on road.", "SUBMITTED", None, None, 3, 60 * 50, -17.73, 31.90, None, None),
+    ("0005", "Road traffic accident", "Demo: kombi overturned on the main road; two people died at the scene.", "ACKNOWLEDGED", "CRITICAL", "CRITICAL", 4, 40, -17.62, 31.76, "YES", "YES"),
+    ("0006", "Road traffic accident", "Demo: car hit a cyclist, cyclist injured and conscious.", "AWAITING_REVIEW", None, "HIGH", 5, 15, -17.83, 31.95, "YES", "NO"),
+    ("0007", "Flooding", "Demo: river burst its banks, low-lying homesteads cut off.", "AWAITING_REVIEW", None, "HIGH", 6, 120, -17.92, 31.70, "NO", "NO"),
+    ("0008", "Building fire", "Demo: kitchen hut on fire, family outside and safe.", "AWAITING_REVIEW", None, "CRITICAL", 7, 10, -17.60, 31.86, "NO", "NO"),
+    ("0009", "Collapsed structure", "Demo: classroom wall collapsed after heavy rain, nobody inside.", "AWAITING_REVIEW", None, "CRITICAL", 2, 300, -17.78, 32.05, "NO", "NO"),
+    ("0010", "Water supply emergency", "Demo: borehole contaminated, residents told not to drink.", "AWAITING_REVIEW", None, "HIGH", 3, 600, -17.98, 31.88, None, None),
+]
+
+
+def add_demo_samples(db, c) -> int:
+    """Adds any missing demonstration incidents to the DEMO council (safe to run again)."""
+    cats = {x.name: x for x in db.scalars(select(m.IncidentCategory).where(m.IncidentCategory.council_id == c.id))}
+    wards = db.scalars(select(m.Ward).where(m.Ward.council_id == c.id).order_by(m.Ward.number)).all()
+    users = {u.username: u for u in db.scalars(select(m.User).where(m.User.council_id == c.id))}
+    coord, reporter = users.get("coordinator"), users.get("reporter")
+    fire = db.scalar(select(m.ResponseTeam).where(m.ResponseTeam.council_id == c.id, m.ResponseTeam.name == "Demo Fire Team"))
+    have = set(db.scalars(select(m.Incident.idempotency_key).where(m.Incident.council_id == c.id)))
+    now = utcnow()
+    added = 0
+    for key, cat, desc, status, prio, sugg, w, minutes_ago, lat, lon, injuries, fatalities in DEMO_SAMPLES:
+        if f"demo-seed-{key}" in have or cat not in cats or not wards or reporter is None:
+            continue
+        t = now - timedelta(minutes=minutes_ago)
+        category = cats[cat]
+        inc = m.Incident(council_id=c.id, reference=f"TMP-DEMO-{key}", kind=category.kind, category_id=category.id,
+                         status=status, priority=prio, suggested_priority=sugg, source="APP", reported_at=t, received_at=t,
+                         latitude=lat, longitude=lon, accuracy_m=15, location_source="GPS",
+                         ward_id=wards[w % len(wards)].id, description=desc, reporter_id=reporter.id,
+                         reporter_name=reporter.full_name, reporter_phone=reporter.phone, idempotency_key=f"demo-seed-{key}",
+                         is_demo=True, injuries=injuries, fatalities=fatalities)
+        if status in ("ACKNOWLEDGED", "ASSIGNED", "RESOLVED"):
+            inc.acknowledged_at = t + timedelta(minutes=4)
+        if status == "RESOLVED":
+            inc.resolved_at = t + timedelta(hours=3)
+        db.add(inc)
+        db.flush()
+        inc.reference = f"DEMO-{t:%Y}-{inc.id:06d}"
+        db.add(m.IncidentStatusHistory(incident_id=inc.id, from_status=None, to_status=status,
+                                       user_id=coord.id if coord else None, note="Demonstration record created by seed-demo"))
+        if status == "ASSIGNED" and fire is not None:
+            db.add(m.Assignment(incident_id=inc.id, team_id=fire.id, assigned_by=coord.id, instructions="Demo assignment",
+                                ack_due_at=now + timedelta(minutes=5)))
+            fire.availability = "AWAITING_CONFIRMATION"
+        added += 1
+    return added
+
+
 def seed_demo():
     """Demonstration data only. Names are generic and the council is flagged as DEMO everywhere."""
     with SessionLocal() as db:
-        if db.scalar(select(m.Council).where(m.Council.code == "DEMO")):
-            print("The DEMO council already exists.")
+        existing = db.scalar(select(m.Council).where(m.Council.code == "DEMO"))
+        if existing:
+            added = add_demo_samples(db, existing)
+            db.commit()
+            print(f"The DEMO council already exists. {added} new demonstration incident(s) added.")
             return
         c = create_council(db, "DEMO", "Murewa RDC – DEMONSTRATION DATA", is_demo=True)
         c.phone = "+263 000 000 000 (demo)"
@@ -108,35 +164,7 @@ def seed_demo():
             m.Resource(council_id=c.id, name="Demo Radio Set", category="Communication device", status="AVAILABLE"),
         ])
         db.flush()
-        cats = {x.name: x for x in db.scalars(select(m.IncidentCategory).where(m.IncidentCategory.council_id == c.id))}
-        now = utcnow()
-        samples = [
-            ("Road traffic accident", "Demo: two vehicles collided near the demo business centre.", "AWAITING_REVIEW", None, "HIGH", 0, 25),
-            ("Bush or veld fire", "Demo: grass fire spreading towards homesteads.", "ASSIGNED", "CRITICAL", "HIGH", 1, 90),
-            ("Fallen tree", "Demo: tree blocking the gravel road.", "RESOLVED", "MEDIUM", "MEDIUM", 2, 60 * 26),
-            ("Blocked drainage", "Demo: culvert blocked, water pooling on road.", "SUBMITTED", None, None, 3, 60 * 50),
-        ]
-        for n, (cat, desc, status, prio, sugg, w, minutes_ago) in enumerate(samples, start=1):
-            t = now - timedelta(minutes=minutes_ago)
-            category = cats[cat]
-            inc = m.Incident(council_id=c.id, reference=f"DEMO-{t:%Y}-{n:06d}", kind=category.kind, category_id=category.id,
-                             status=status, priority=prio, suggested_priority=sugg, source="APP", reported_at=t, received_at=t,
-                             latitude=-17.65 - 0.02 * n, longitude=31.78 + 0.03 * n, accuracy_m=15, location_source="GPS",
-                             ward_id=wards[w].id, description=desc, reporter_id=reporter.id,
-                             reporter_name=reporter.full_name, reporter_phone=reporter.phone, idempotency_key=f"demo-seed-{n:04d}",
-                             is_demo=True, injuries="UNKNOWN")
-            if status in ("ASSIGNED", "RESOLVED"):
-                inc.acknowledged_at = t + timedelta(minutes=4)
-            if status == "RESOLVED":
-                inc.resolved_at = t + timedelta(hours=3)
-            db.add(inc)
-            db.flush()
-            db.add(m.IncidentStatusHistory(incident_id=inc.id, from_status=None, to_status=status, user_id=coord.id,
-                                           note="Demonstration record created by seed-demo"))
-            if status == "ASSIGNED":
-                db.add(m.Assignment(incident_id=inc.id, team_id=fire.id, assigned_by=coord.id, instructions="Demo assignment",
-                                    ack_due_at=now + timedelta(minutes=5)))
-                fire.availability = "AWAITING_CONFIRMATION"
+        add_demo_samples(db, c)
         db.commit()
         print("DEMO council created. Council code: DEMO. Password for every demo account:", pw)
         print("Accounts: admin, coordinator, manager, roadslead, firelead, officer, reporter, auditor")

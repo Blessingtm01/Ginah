@@ -306,3 +306,46 @@ def test_photo_attachment_round_trip_and_access(world):
     assert c.get(f"{API}/attachments/{r.json()['id']}", headers=world["login"]("reporter2")).status_code == 404
     bad = c.post(f"{API}/incidents/{inc['id']}/attachments", files={"file": ("x.exe", b"MZ", "application/octet-stream")}, headers=rep)
     assert bad.status_code == 415
+
+
+def test_live_map_shows_council_reports_to_every_reporter_without_reporter_identity(world):
+    c = world["client"]
+    rep = world["login"]("community_reporter")
+    fatal = report(world, rep, fatalities="YES", description="Bus overturned").json()
+    assert fatal["suggested_priority"] == "CRITICAL"
+    injured = report(world, rep, injuries="YES").json()
+    report(world, rep, latitude=None, longitude=None, landmark="Near the school")  # no GPS: not on the map
+    jpeg = b"\xff\xd8\xff\xe0fatal-scene"
+    photo = c.post(f"{API}/incidents/{fatal['id']}/attachments", files={"file": ("p.jpg", jpeg, "image/jpeg")}, headers=rep).json()
+
+    # Another community reporter sees the whole council on the map, including photos.
+    other = world["login"]("reporter2")
+    r = c.get(f"{API}/map/live", headers=other)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["council"]["boundary"]["type"] in ("Polygon", "MultiPolygon")
+    assert [x["code"] for x in data["legend"]][0] == "FATAL"
+    by_id = {x["id"]: x for x in data["incidents"]}
+    assert set(by_id) == {fatal["id"], injured["id"]}
+    assert by_id[fatal["id"]]["type"] == "FATAL" and by_id[fatal["id"]]["color"] == "#D32F2F"
+    assert by_id[injured["id"]]["type"] == "CRASH_INJURY"
+    assert by_id[fatal["id"]]["photo_ids"] == [photo["id"]]
+    assert by_id[fatal["id"]]["mine"] is False
+    assert "reporter_name" not in by_id[fatal["id"]] and "reporter_phone" not in by_id[fatal["id"]]
+    got = c.get(f"{API}/map/photos/{photo['id']}", headers=other)
+    assert got.status_code == 200 and got.content == jpeg and got.headers["content-type"] == "image/jpeg"
+
+    # Users of another council see neither the incidents nor the photos.
+    b = world["login"]("coordinator", council="OTHER")
+    assert c.get(f"{API}/map/live", headers=b).json()["incidents"] == []
+    assert c.get(f"{API}/map/photos/{photo['id']}", headers=b).status_code == 404
+    assert c.get(f"{API}/map/live").status_code == 401
+
+
+def test_console_is_served(world):
+    c = world["client"]
+    assert c.get("/", follow_redirects=False).headers["location"] == "/console/"
+    page = c.get("/console/")
+    assert page.status_code == 200 and "AcciSafe RDC" in page.text
+    assert c.get("/console/app.js").status_code == 200
+    assert c.get("/console/manifest.webmanifest").status_code == 200

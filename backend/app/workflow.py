@@ -112,9 +112,12 @@ def allowed_manual_targets(kind: str, current: str, actors: set[str]) -> list[st
 def suggest_priority(
     *, category_default: str, threat_to_life: str | None, injuries: str | None,
     immediate_danger: str | None, may_worsen: str | None, affected_people: int | None,
+    fatalities: str | None = None,
 ) -> tuple[str, list[str]]:
     """Advisory priority. An authorised officer always confirms or changes it."""
     reasons: list[str] = []
+    if fatalities == "YES":
+        return "CRITICAL", ["deaths reported"]
     if threat_to_life == "YES":
         return "CRITICAL", ["threat to life reported"]
     if injuries == "YES" and immediate_danger == "YES":

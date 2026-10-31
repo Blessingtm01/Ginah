@@ -112,6 +112,7 @@ class IncidentIn(BaseModel):
     ward_id: int | None = None
     landmark: str | None = Field(default=None, max_length=300)
     injuries: TriState | None = None
+    fatalities: TriState | None = None
     immediate_danger: TriState | None = None
     threat_to_life: TriState | None = None
     may_worsen: TriState | None = None
@@ -155,6 +156,7 @@ def create_incident(body: IncidentIn, request: Request, response: Response,
     suggested, reasons = suggest_priority(
         category_default=cat.default_priority, threat_to_life=body.threat_to_life, injuries=body.injuries,
         immediate_danger=body.immediate_danger, may_worsen=body.may_worsen, affected_people=body.affected_people,
+        fatalities=body.fatalities,
     )
     data = body.model_dump(exclude={"reported_at", "occurred_at"})
     inc = m.Incident(
@@ -250,7 +252,7 @@ def incident_detail(incident_id: int, cu: CurrentUser = Depends(current_user), d
     out.update({
         "description": inc.description, "occurred_at": _dt(inc.occurred_at), "occurred_at_unknown": inc.occurred_at_unknown,
         "acknowledged_at": _dt(inc.acknowledged_at), "resolved_at": _dt(inc.resolved_at), "closed_at": _dt(inc.closed_at),
-        "location_source": inc.location_source, "injuries": inc.injuries, "immediate_danger": inc.immediate_danger,
+        "location_source": inc.location_source, "injuries": inc.injuries, "fatalities": inc.fatalities, "immediate_danger": inc.immediate_danger,
         "threat_to_life": inc.threat_to_life, "may_worsen": inc.may_worsen, "affected_people": inc.affected_people,
         "affected_people_unknown": inc.affected_people_unknown, "escalated_from_routine": inc.escalated_from_routine,
     })
@@ -367,6 +369,7 @@ class AssessIn(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
     threat_to_life: TriState | None = None
     injuries: TriState | None = None
+    fatalities: TriState | None = None
     immediate_danger: TriState | None = None
     may_worsen: TriState | None = None
     affected_people: int | None = Field(default=None, ge=0)
@@ -380,12 +383,13 @@ def assess(incident_id: int, body: AssessIn, request: Request, cu: CurrentUser =
     _check_version(inc, body.expected_version)
     if inc.kind != "EMERGENCY" or inc.status in ("CLOSED", "CANCELLED"):
         raise HTTPException(409, "This incident cannot be assessed")
-    for k in ("threat_to_life", "injuries", "immediate_danger", "may_worsen", "affected_people"):
+    for k in ("threat_to_life", "injuries", "fatalities", "immediate_danger", "may_worsen", "affected_people"):
         if (v := getattr(body, k)) is not None:
             setattr(inc, k, v)
     suggested, reasons = suggest_priority(
         category_default=inc.category.default_priority, threat_to_life=inc.threat_to_life, injuries=inc.injuries,
-        immediate_danger=inc.immediate_danger, may_worsen=inc.may_worsen, affected_people=inc.affected_people)
+        immediate_danger=inc.immediate_danger, may_worsen=inc.may_worsen, affected_people=inc.affected_people,
+        fatalities=inc.fatalities)
     original = inc.priority
     if original is not None and original != body.priority and not (body.reason or "").strip():
         raise HTTPException(422, "Give a reason for changing the priority")

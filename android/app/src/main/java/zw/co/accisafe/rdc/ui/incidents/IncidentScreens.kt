@@ -302,6 +302,7 @@ fun IncidentDetailScreen(id: Int, nav: NavHostController, vm: IncidentDetailView
                     InfoRow("Received", formatTime(d.receivedAt))
                     InfoRow("Occurred", if (d.occurredAtUnknown) "Unknown" else d.occurredAt?.let(::formatTime))
                     InfoRow("Acknowledged", d.acknowledgedAt?.let(::formatTime) ?: "Not yet")
+                    InfoRow("Deaths reported", tri(d.fatalities))
                     InfoRow("Injuries", tri(d.injuries))
                     InfoRow("Immediate danger", tri(d.immediateDanger))
                     InfoRow("Threat to life", tri(d.threatToLife))

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AcciSafe RDC Console</title>
+  <meta name="theme-color" content="#14532D">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Sign in -->
+<section id="login" class="login hidden">
+  <form id="login-form" class="login-card" autocomplete="on">
+    <div class="brand-mark"><img src="icon.svg" alt=""></div>
+    <h1>AcciSafe RDC</h1>
+    <p class="muted">Council incident console</p>
+    <label>Council code<input id="l-council" name="council" required value="DEMO" autocapitalize="characters"></label>
+    <label>Username<input id="l-user" name="username" required autocomplete="username"></label>
+    <label>Password<input id="l-pass" name="password" type="password" required autocomplete="current-password"></label>
+    <p id="login-error" class="error hidden"></p>
+    <button type="submit" class="btn primary wide" id="login-btn">Sign in</button>
+    <p class="muted small">The first sign-in can take up to a minute while the server wakes up.</p>
+  </form>
+</section>
+
+<!-- Application -->
+<section id="app" class="app hidden">
+  <header class="topbar">
+    <div class="brand"><img src="icon.svg" alt=""><div><strong>AcciSafe RDC</strong><span id="council-name"></span></div></div>
+    <nav class="tabs" id="tabs">
+      <button data-view="map" class="active">Live map</button>
+      <button data-view="list">Reports</button>
+      <button data-view="dash" id="tab-dash">Dashboard</button>
+    </nav>
+    <div class="top-right">
+      <span class="live"><i></i><span id="updated">Loading…</span></span>
+      <button id="install-btn" class="btn ghost hidden" title="Install as a desktop app">Install app</button>
+      <span id="who" class="who"></span>
+      <button id="logout" class="btn ghost">Sign out</button>
+    </div>
+  </header>
+  <div id="demo-banner" class="demo hidden">DEMONSTRATION DATA. These are not real incidents.</div>
+
+  <main class="views">
+    <!-- Live map -->
+    <section id="view-map" class="view map-view">
+      <div class="map-tools">
+        <label>Period
+          <select id="period">
+            <option value="1">Last 24 hours</option>
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last 12 months</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="active-only"> Open incidents only</label>
+        <span id="map-count" class="muted"></span>
+      </div>
+      <div id="map"></div>
+      <aside class="legend" id="legend"><h3>Map key</h3><ul id="legend-list"></ul><p class="muted small">Click a type to hide or show it. Faded dots are resolved.</p></aside>
+      <aside class="feed" id="feed"><h3>Latest reports</h3><ul id="feed-list"></ul></aside>
+    </section>
+
+    <!-- Reports table -->
+    <section id="view-list" class="view hidden pad">
+      <div class="list-tools">
+        <input id="q" type="search" placeholder="Search reference, description or landmark">
+        <select id="f-kind"><option value="">All kinds</option><option value="EMERGENCY">Emergencies</option><option value="ROUTINE">Service requests</option></select>
+        <select id="f-priority"><option value="">Any priority</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select>
+        <label class="check"><input type="checkbox" id="f-open" checked> Open only</label>
+        <button id="csv" class="btn ghost hidden">Export CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Reference</th><th>Type</th><th>Status</th><th>Priority</th><th>Where</th><th>Received</th><th>Photos</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="pager"><button id="prev" class="btn ghost">Previous</button><span id="page-info"></span><button id="next" class="btn ghost">Next</button></div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="view-dash" class="view hidden pad">
+      <div id="dash"></div>
+    </section>
+  </main>
+</section>
+
+<!-- Incident drawer -->
+<aside id="drawer" class="drawer hidden" aria-live="polite">
+  <button class="drawer-close" id="drawer-close" aria-label="Close">×</button>
+  <div id="drawer-body"></div>
+</aside>
+
+<!-- Photo viewer -->
+<div id="lightbox" class="lightbox hidden">
+  <button class="lb-btn lb-close" id="lb-close" aria-label="Close">×</button>
+  <button class="lb-btn lb-prev" id="lb-prev" aria-label="Previous">‹</button>
+  <img id="lb-img" alt="Incident photo">
+  <button class="lb-btn lb-next" id="lb-next" aria-label="Next">›</button>
+  <p id="lb-caption"></p>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
