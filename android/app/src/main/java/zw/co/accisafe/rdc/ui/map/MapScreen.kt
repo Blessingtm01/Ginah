@@ -141,7 +141,7 @@ fun MapScreen(me: Me, nav: NavHostController, vm: MapViewModel = hiltViewModel()
     var map by remember { mutableStateOf<MapView?>(null) }
     var fitted by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<MapIncident?>(null) }
-    var legendOpen by remember { mutableStateOf(true) }
+    var legendOpen by remember { mutableStateOf(false) }
     val loader = remember { ImageLoader.Builder(context).okHttpClient(vm.okHttp).build() }
 
     // Keep the map live while the screen is open.
@@ -255,8 +255,14 @@ private fun Legend(d: LiveMapResponse, hidden: Set<String>, open: Boolean, onTog
     Surface(modifier.widthIn(max = 280.dp), shape = RoundedCornerShape(16.dp), tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(Modifier.clickable(onClick = onToggleOpen), verticalAlignment = Alignment.CenterVertically) {
-                Text("Map key", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Forest)
+                Text("Map key", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
+                if (!open) {
+                    d.legend.filter { (counts[it.code] ?: 0) > 0 }.forEach { l ->
+                        Box(Modifier.padding(end = 4.dp).size(12.dp).clip(CircleShape).background(parse(l.color)))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
                 Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if (open) "Hide key" else "Show key")
             }
             AnimatedVisibility(open) {
