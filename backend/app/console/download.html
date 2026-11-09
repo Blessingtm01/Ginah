@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download AcciSafe apps</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<style>
+  .dl-page { min-height: 100vh; background: var(--gradient); display: grid; place-items: center; padding: 24px 16px; }
+  .dl-card { width: min(560px, 100%); background: var(--surface); border-radius: 20px; padding: 28px; box-shadow: var(--shadow); display: grid; gap: 16px; }
+  .dl-card h1 { color: var(--pine); font-size: 24px; }
+  .dl-app { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 8px; }
+  .dl-app h2 { font-size: 17px; color: var(--forest); }
+  .dl-app .btn { text-align: center; text-decoration: none; display: block; }
+  .dl-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--muted); }
+  .dl-back { color: var(--emerald); font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="dl-page">
+  <section class="dl-card">
+    <div class="brand-mark"><img src="icon.svg" alt=""></div>
+    <h1>Download the AcciSafe apps</h1>
+    <p class="muted">Android 8.0 or later. Open this page on your Android phone and tap a download button.</p>
+
+    <div class="dl-app">
+      <h2>AcciSafe RDC – council reporting app</h2>
+      <p class="muted small">Report emergencies with GPS and photos, see the live council map, get spoken warnings near incidents, and accident monitoring. Sign in with your council code.</p>
+      <a class="btn primary wide" href="downloads/AcciSafe-RDC.apk" download="AcciSafe-RDC.apk">Download AcciSafe RDC (21 MB)</a>
+    </div>
+
+    <div class="dl-app">
+      <h2>AcciSafe – personal crash alerts</h2>
+      <p class="muted small">Detects a possible crash or fall, gives you 30 seconds to cancel, then sends your emergency contacts an SMS with your location. Works without mobile data.</p>
+      <a class="btn primary wide" href="downloads/AcciSafe.apk" download="AcciSafe.apk">Download AcciSafe (6 MB)</a>
+    </div>
+
+    <div>
+      <strong>How to install</strong>
+      <ol class="dl-steps">
+        <li>Tap a download button and wait for the file to finish downloading.</li>
+        <li>Open the downloaded file from the notification or your Downloads folder.</li>
+        <li>If Android asks, allow your browser to <em>install unknown apps</em>, then tap <strong>Install</strong>.</li>
+      </ol>
+    </div>
+    <p class="muted small">These are test versions for demonstration. The apps support, but do not replace, emergency services.</p>
+    <a class="dl-back" href="./">← Back to the council console</a>
+  </section>
+</main>
+</body>
+</html>

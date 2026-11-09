@@ -1,5 +1,6 @@
 """AcciSafe RDC backend application."""
 import logging
+import mimetypes
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -15,6 +16,9 @@ from .config import settings
 from .db import SessionLocal, engine
 from .escalation import EscalationWorker
 from .routers import admin, auth, incidents, livemap, operations, reports
+
+# Android packages must be served with their own type so phones offer to install them.
+mimetypes.add_type("application/vnd.android.package-archive", ".apk")
 
 logging.basicConfig(level=logging.INFO, format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}')
 log = logging.getLogger("accisafe")

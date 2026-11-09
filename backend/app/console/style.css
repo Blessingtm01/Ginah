@@ -157,3 +157,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--leaf); bord
 }
 .leaflet-control-layers { border-radius: 12px !important; font-weight: 600; }
 .leaflet-control-layers-expanded { padding: 6px 12px !important; }
+
+/* Download link on the sign-in card (ghost buttons are styled for the dark header). */
+.login-card .get-app { color: var(--emerald); border-color: var(--line); background: var(--mint); text-align: center; text-decoration: none; }
+.top-right a.btn { text-decoration: none; }
